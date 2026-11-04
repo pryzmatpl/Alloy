@@ -1,0 +1,13 @@
+# Example root alloy.toml for the Alloy v0.2 project.
+# The canonical runnable package is in examples/hello/.
+
+[package]
+name = "alloy"
+version = "0.2.0"
+kind = "lib"
+
+[compiler]
+protocol = "acp/0.2"
+provider = "ollama"
+model = "qwen2.5:0.5b"
+base_url = "http://localhost:11434/v1"
