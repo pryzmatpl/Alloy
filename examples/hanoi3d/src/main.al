@@ -19,6 +19,7 @@ extern "C" {
     function printf(fmt: *const u8, ...): i32;
     function sinf(x: f32): f32;
     function cosf(x: f32): f32;
+    function sqrtf(x: f32): f32;
 
     function glutInit(argc: i32, argv: *const u8): void;
     function glutInitDisplayMode(mode: u32): void;
@@ -60,6 +61,7 @@ extern "C" {
     function glTexImage2D(target: u32, level: i32, internal: i32, w: i32, h: i32, border: i32, fmt: u32, type: u32, pixels: *const u8): void;
     function glTexParameteri(target: u32, pname: u32, param: i32): void;
     function glTexEnvi(target: u32, pname: u32, param: i32): void;
+    function glActiveTexture(unit: u32): void;
     function glBegin(mode: u32): void;
     function glEnd(): void;
     function glVertex3f(x: f32, y: f32, z: f32): void;
@@ -99,7 +101,10 @@ let GL_TEXTURE_WRAP_T: u32 = 0x2803;
 let GL_REPEAT: i32 = 0x2901;
 let GL_MODULATE: i32 = 0x2100;
 let GL_RGB: u32 = 0x1907;
+let GL_RGBA: u32 = 0x1908;
 let GL_UNSIGNED_BYTE: u32 = 0x1401;
+let GL_CLAMP: i32 = 0x2900;
+let GL_TEXTURE1: u32 = 0x84C1;
 let GL_PROJECTION: u32 = 0x1701;
 let GL_MODELVIEW: u32 = 0x1700;
 let GL_QUADS: u32 = 0x0007;
@@ -123,8 +128,11 @@ let PEG_HEIGHT: f32 = 1.05;
 let DISK_HEIGHT: f32 = 0.13;
 let DISK_GAP: f32 = 0.15;
 let PI: f32 = 3.14159265;
+let MIST_SIZE: i32 = 64;
+let MIST_BYTES: i32 = 16384;
 
 var woodTex: u8[12288];
+var mistTex: u8[16384];
 var mvFrom: i32[16];
 var mvTo: i32[16];
 var mvDisk: i32[16];
@@ -146,7 +154,7 @@ function texRand(x: u32, y: u32): f32 {
     return (texHash(x, y) as f32) / 4294967296.0;
 }
 
-// Wood: vertical grain, dark knots, fine speckles.
+// Wood: vertical grain, fine speckles, a few small dark knots.
 function buildWoodTexture(): void {
     var px: i32 = 0;
     while px < TEX_SIZE {
@@ -155,26 +163,50 @@ function buildWoodTexture(): void {
             let fx: f32 = px as f32;
             let fy: f32 = py as f32;
             let n: f32 = texRand(px as u32, py as u32);
-            let knot: f32 = texRand((px / 5) as u32, (py / 5) as u32);
             let grain: f32 = sinf(fx * 0.55 + 3.0 * sinf(fy * 0.09) + 1.2 * (n - 0.5));
             let g: f32 = 0.55 + 0.45 * grain;
             var rr: f32 = 0.38 + 0.52 * g;
             var gg: f32 = 0.21 + 0.37 * g;
             var bb: f32 = 0.09 + 0.21 * g;
-            if knot > 0.93 {
-                rr = rr * 0.25;
-                gg = gg * 0.22;
-                bb = bb * 0.18;
-            }
-            if n > 0.99 {
-                rr = rr * 0.40;
-                gg = gg * 0.38;
-                bb = bb * 0.34;
+            // Fine speckle: individual dark flecks in the grain.
+            if n > 0.965 {
+                rr = rr * 0.55;
+                gg = gg * 0.52;
+                bb = bb * 0.46;
             }
             let idx: i32 = (py * TEX_SIZE + px) * 3;
             woodTex[idx] = (rr * 255.0) as u8;
             woodTex[idx + 1] = (gg * 255.0) as u8;
             woodTex[idx + 2] = (bb * 255.0) as u8;
+            py = py + 1;
+        }
+        px = px + 1;
+    }
+}
+
+// A soft round alpha blob, used to texture the mist billboards.
+function buildMistTexture(): void {
+    var px: i32 = 0;
+    while px < MIST_SIZE {
+        var py: i32 = 0;
+        while py < MIST_SIZE {
+            let fx: f32 = (px as f32 - 31.5) / 31.5;
+            let fy: f32 = (py as f32 - 31.5) / 31.5;
+            let d: f32 = sqrtf(fx * fx + fy * fy);
+            var a: f32 = 1.0 - d;
+            if a < 0.0 {
+                a = 0.0;
+            }
+            a = a * a * (3.0 - 2.0 * a);
+            // Break the blob up with noise so it reads as vapour.
+            let n: f32 = texRand(px as u32, py as u32);
+            a = a * (0.55 + 0.45 * n);
+            let v: u8 = (a * 255.0) as u8;
+            let idx: i32 = (py * MIST_SIZE + px) * 4;
+            mistTex[idx] = 255;
+            mistTex[idx + 1] = 255;
+            mistTex[idx + 2] = 255;
+            mistTex[idx + 3] = v;
             py = py + 1;
         }
         px = px + 1;
@@ -339,24 +371,51 @@ function drawScene(elapsed: i32): void {
     }
 }
 
-// Drifting mist motes: soft translucent points that always face the camera.
+// Drifting mist: soft alpha-textured billboards that always face the camera.
 function drawMist(elapsed: i32): void {
     let t: f32 = elapsed as f32 * 0.001;
     var i: i32 = 0;
-    while i < 160 {
+    while i < 26 {
         let fi: f32 = i as f32;
         let seed: f32 = texRand(i as u32, 7);
         let seed2: f32 = texRand(i as u32, 991);
-        let px: f32 = sinf(fi * 1.7 + t * 0.22) * 2.0 + (seed - 0.5) * 1.0;
-        let pz: f32 = cosf(fi * 2.3 + t * 0.15) * 1.3 + (seed2 - 0.5) * 1.0;
-        let py: f32 = 0.02 + 1.05 * (0.5 + 0.5 * sinf(fi * 0.9 + t * 0.30));
-        let size: f32 = 30.0 + 80.0 * seed;
-        let alpha: f32 = 0.030 + 0.045 * seed2;
+        let px: f32 = sinf(fi * 1.7 + t * 0.20) * 2.0 + (seed - 0.5) * 1.0;
+        let pz: f32 = cosf(fi * 2.3 + t * 0.14) * 1.4 + (seed2 - 0.5) * 1.0;
+        let py: f32 = 0.10 + 0.85 * (0.5 + 0.5 * sinf(fi * 0.9 + t * 0.28));
+        let size: f32 = 0.75 + 1.05 * seed;
+        let alpha: f32 = 0.16 + 0.16 * seed2;
 
-        glPointSize(size);
-        glColor4f(0.90, 0.94, 0.98, alpha);
-        glBegin(GL_POINTS);
-        glVertex3f(px, py, pz);
+        // Camera-facing quad: build it from the camera's right and up axes.
+        let fx: f32 = camTarget.x - camPos.x;
+        let fy: f32 = camTarget.y - camPos.y;
+        let fz: f32 = camTarget.z - camPos.z;
+        let flen: f32 = sqrtf(fx * fx + fy * fy + fz * fz);
+        let fwx: f32 = fx / flen;
+        let fwy: f32 = fy / flen;
+        let fwz: f32 = fz / flen;
+        // right = forward x up
+        let rx: f32 = fwz;
+        let ry: f32 = 0.0;
+        let rz: f32 = -fwx;
+        let rlen: f32 = sqrtf(rx * rx + rz * rz);
+        let rux: f32 = rx / rlen;
+        let ruy: f32 = 0.0;
+        let ruz: f32 = rz / rlen;
+        // up = right x forward
+        let upx: f32 = ruy * fwz - ruz * fwy;
+        let upy: f32 = ruz * fwx - rux * fwz;
+        let upz: f32 = rux * fwy - ruy * fwx;
+
+        glColor4f(0.92, 0.95, 0.98, alpha);
+        glBegin(GL_QUADS);
+        glTexCoord2f(0.0, 0.0);
+        glVertex3f(px - size * rux - size * upx, py - size * ruy - size * upy, pz - size * ruz - size * upz);
+        glTexCoord2f(1.0, 0.0);
+        glVertex3f(px + size * rux - size * upx, py + size * ruy - size * upy, pz + size * ruz - size * upz);
+        glTexCoord2f(1.0, 1.0);
+        glVertex3f(px + size * rux + size * upx, py + size * ruy + size * upy, pz + size * ruz + size * upz);
+        glTexCoord2f(0.0, 1.0);
+        glVertex3f(px - size * rux + size * upx, py - size * ruy + size * upy, pz - size * ruz + size * upz);
         glEnd();
         i = i + 1;
     }
@@ -392,17 +451,18 @@ function display(): void {
 
     drawScene(elapsed);
 
+    // Mist billboards: alpha-blended, lit by nothing, on their own texture.
+    glActiveTexture(GL_TEXTURE1);
+    glEnable(GL_TEXTURE_2D);
     glDisable(GL_LIGHTING);
-    glDisable(GL_TEXTURE_2D);
-    glEnable(GL_POINT_SMOOTH);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glDepthMask(0);
     drawMist(elapsed);
     glDepthMask(1);
     glDisable(GL_BLEND);
-    glEnable(GL_TEXTURE_2D);
     glEnable(GL_LIGHTING);
+    glActiveTexture(0);
 
     glutSwapBuffers();
 }
@@ -466,6 +526,19 @@ function init(): void {
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, TEX_SIZE, TEX_SIZE, 0, GL_RGB, GL_UNSIGNED_BYTE, woodTex.as_ptr());
     glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
     glEnable(GL_TEXTURE_2D);
+
+    // The mist uses its own alpha texture, bound to unit 1.
+    buildMistTexture();
+    var mistId: u32 = 0;
+    glGenTextures(1, &mistId);
+    glActiveTexture(1);
+    glBindTexture(GL_TEXTURE_2D, mistId);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, MIST_SIZE, MIST_SIZE, 0, GL_RGBA, GL_UNSIGNED_BYTE, mistTex.as_ptr());
+    glActiveTexture(0);
 
     mvCount = 0;
     planMoves(DISKS, 0, 0, 2, 1);
