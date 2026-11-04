@@ -215,6 +215,45 @@ These are closures or function pointers. Closures that capture GC objects are
 GC-managed. Closures that capture raw pointers do not extend those pointers’
 validity.
 
+### 4.9 Vectors
+
+`vec2`, `vec3` and `vec4` are built-in value types with `f32` components.
+
+| Type   | Components         | Element count |
+|--------|--------------------|---------------|
+| `vec2` | `x`, `y`           | 2             |
+| `vec3` | `x`, `y`, `z`      | 3             |
+| `vec4` | `x`, `y`, `z`, `w` | 4             |
+
+Rules:
+- Construction: `vec3(1.0, 2.0, 3.0)`. The argument count must match the type.
+- Component read: `v.x`, `v.y`, `v.z`, `v.w`.
+- Component write: `v.x = 1.0;` — only allowed on a `var` binding.
+- `+` and `-` are component-wise between two vectors of the same type.
+- `*` and `/` with a scalar scale the vector: `v * 2.0`, `2.0 * v`, `v / 2.0`.
+- `==` is component-wise equality and yields `bool`.
+- Vectors are values: assignment copies them.
+- No implicit conversion between vector types, or between vectors and scalars.
+- A vector may be a `struct` field, a function parameter, or a return type.
+- Vectors are layout-compatible with a C struct of `f32` members named
+  `x`, `y`, `z`, `w` in that order.
+
+### 4.10 Fixed-size arrays
+
+```
+array-type ::= type "[" int-literal "]"
+```
+
+- `f32[16]`, `u8[64]`, `vec3[4]` are fixed-size arrays. The length must be an
+  integer literal known at compile time.
+- Indexing: `a[i]`, where `i` is `i32` or `usize`. Bounds are checked at
+  runtime; an out-of-range index panics.
+- `a.len(): usize` returns the element count.
+- Arrays are values: assignment copies the whole array. Pass `*mut T` to
+  mutate an array in place.
+- Array literals: `let a: f32[3] = { 1.0, 2.0, 3.0 };`
+- An array of vectors is `vec3[4]`; an array of structs is `struct-name[N]`.
+
 ---
 
 ## 5. Declarations
@@ -562,6 +601,8 @@ param        ::= ident ":" type
 type         ::= ident [ "<" type { "," type } ">" ]
                | "*" type | "*const" type | "*mut" type
                | "function" "(" [ type { "," type } ] ")" ":" type
+               | type "[" int "]"
+               | "vec2" | "vec3" | "vec4"
 
 block        ::= "{" { stmt } "}"
 stmt         ::= let-stmt | var-stmt | if-stmt | while-stmt | match-stmt
@@ -671,6 +712,9 @@ A source tree is valid Alloy v0.2 if:
 - [ ] The package builds an ACP/0.2 request that includes all source files
 - [ ] The compiler LLM can emit valid Alloy IR (§17) for the package
 - [ ] The chosen `--emit` format is one of `ir`, `assembly`, `c`, `wasm`, `object`
+- [ ] Vector components are only read or written as `.x`, `.y`, `.z`, `.w`
+- [ ] Vector arithmetic only combines vectors of the same type
+- [ ] Array lengths are integer literals, and array indices are in bounds
 
 ---
 
@@ -721,6 +765,8 @@ type ::= "i8" | "i16" | "i32" | "i64" | "u8" | "u16" | "u32" | "u64"
        | "string" | "*" type | "*const" type | "*mut" type
        | "{" { ident ":" type ";" } "}"
        | "function" "(" [ type { "," type } ] ")" "->" type
+       | "vec2" | "vec3" | "vec4"
+       | "[" type ";" int "]"
 ```
 
 ### 17.3 Example

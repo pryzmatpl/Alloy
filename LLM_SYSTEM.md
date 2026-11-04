@@ -36,11 +36,34 @@ extern "C" write(fd: i32, buf: *const u8, n: usize): isize;
 ## Types
 Primitives: i8 i16 i32 i64 u8 u16 u32 u64 usize isize f32 f64 bool void string
 Pointers: *T  *const T  *mut T
+Vectors: vec2 vec3 vec4 (f32 components named x, y, z, w)
+Arrays: T[N] (fixed length, N is an integer literal)
 Values: struct
 Objects: class (GC)
 Contracts: interface (vtable)
 Errors: Result<T, E> with Ok / Err
 No &, no lifetimes, no impl, no trait, no unsafe, no fn, no $vars
+
+## Vectors
+```
+let p: vec3 = vec3(1.0, 2.0, 3.0);
+let d: vec3 = p - vec3(0.0, 1.0, 0.0);
+let s: vec3 = p * 2.0;
+let l: f32 = p.x + p.y + p.z;
+```
+- Components are `.x`, `.y`, `.z`, `.w`.
+- `+` and `-` are component-wise between two vectors of the same type.
+- `*` and `/` with a scalar scale the vector.
+- Vectors are values: assignment copies them.
+
+## Arrays
+```
+let radii: f32[4] = { 0.45, 0.36, 0.27, 0.18 };
+let r: f32 = radii[0];
+let n: usize = radii.len();
+```
+- Length is an integer literal. Indices are bounds-checked at runtime.
+- Arrays are values: assignment copies them. Use `*mut T` to mutate in place.
 
 ## Interfaces
 ```
@@ -70,6 +93,9 @@ Kernel/sys: raw pointers, extern, #if target.
 ## Forbidden emissions
 fn, func, def, impl, trait, dyn, &'a, unsafe, $name, ->method, php namespaces with \
 generic bounds, async/await, exceptions, for-in
+
+Do not invent: `vec5`, swizzles (`.xyz`), matrix types, slice types, `Vec<T>`, \
+dynamic arrays, vector literals other than `vec2/vec3/vec4(...)`.
 
 ## When asked to "build"
 1. Emit the full package tree.

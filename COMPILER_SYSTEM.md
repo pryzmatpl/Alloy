@@ -51,6 +51,10 @@ Rules for the response:
   static calls are `Type::name(args)`.
 - Types: `i8 i16 i32 i64 u8 u16 u32 u64 usize isize f32 f64 bool void
   string bytes`. Pointers: `*T`, `*const T`, `*mut T`.
+- Vectors: `vec2`, `vec3`, `vec4` are built-in value types with `f32`
+  components named `x`, `y`, `z`, `w`.
+- Arrays: `T[N]` with `N` an integer literal. Index with `a[i]`, length with
+  `a.len()`.
 - Values: `struct`. Objects: `class` (GC reference). Contracts: `interface`.
 - Errors are `Result<T, E>` with `Ok` / `Err`; use `match` to handle them.
 - Dependency injection uses `Container.bind<T>` and `Container.get<T>`.
@@ -58,6 +62,42 @@ Rules for the response:
 - `extern "C"` declarations have no body.
 - No borrow checker, no lifetimes, no `&T` types, no `impl`, no `trait`, no
   `unsafe`, no `$` variables, no `->method` calls.
+
+## Lowering vectors and arrays to C
+
+When the package uses `vec2`, `vec3`, `vec4`, or `T[N]`, emit the matching C
+machinery. Do not silently drop the feature.
+
+Vectors lower to plain C structs:
+
+```c
+typedef struct { float x, y; } vec2;
+typedef struct { float x, y, z; } vec3;
+typedef struct { float x, y, z, w; } vec4;
+```
+
+- `vec3(1.0, 2.0, 3.0)` becomes `(vec3){ .x = 1.0, .y = 2.0, .z = 3.0 }` or a
+  local initialized with those fields.
+- `v.x` becomes `v.x`.
+- `a + b` (two vectors) becomes component-wise addition written out, e.g.
+  `(vec3){ .x = a.x + b.x, .y = a.y + b.y, .z = a.z + b.z }`.
+- `v * s` (vector times scalar) becomes `(vec3){ .x = v.x * s, .y = v.y * s,
+  .z = v.z * s }`.
+- `v == w` becomes `(v.x == w.x && v.y == w.y && v.z == w.z)`.
+
+Arrays lower to C arrays:
+
+```c
+float radii[4] = { 0.45f, 0.36f, 0.27f, 0.18f };
+```
+
+- `a[i]` becomes `a[i]`.
+- `a.len()` becomes `sizeof(a) / sizeof(a[0])`, or a literal if the length is
+  known statically.
+- `T[N]` where `T` is a vector becomes an array of that struct type.
+
+Keep the emitted C self-contained: if you emit `typedef struct` helpers for
+vectors, emit them once at the top of the file.
 
 ## Alloy IR format
 
