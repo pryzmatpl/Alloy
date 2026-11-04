@@ -1,6 +1,7 @@
 """Core compile/check/run logic for the Alloy CLI."""
 
 import base64
+import os
 import shutil
 import subprocess
 import sys
@@ -45,6 +46,61 @@ def _compile_c_to_exe(
     if link_flags:
         cmd.extend(link_flags if isinstance(link_flags, list) else [link_flags])
     subprocess.run(cmd, check=True)
+
+
+def _c_compile_errors(
+    c_path: Path, opt_level: int, link_flags: list[str] | None
+) -> str:
+    """Return the C compiler diagnostics for c_path, or "" if it compiles."""
+    cc = shutil.which("gcc") or shutil.which("clang") or "cc"
+    cmd = [cc, f"-O{opt_level}", "-c", str(c_path), "-o", os.devnull]
+    if link_flags:
+        cmd.extend(link_flags if isinstance(link_flags, list) else [link_flags])
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode == 0:
+        return ""
+    return (proc.stderr or proc.stdout).strip()
+
+
+def _repair_c(
+    c_source: str, errors: str, compiler_cfg: dict[str, Any]
+) -> str | None:
+    """Ask the compiler model to fix the C source given compiler diagnostics."""
+    messages = [
+        {"role": "system", "content": _system_prompt()},
+        {
+            "role": "user",
+            "content": (
+                "The C file you produced does not compile.\n\n"
+                "=== C SOURCE ===\n"
+                f"{c_source}\n\n"
+                "=== COMPILER ERRORS ===\n"
+                f"{errors}\n\n"
+                "Fix every error. Return the complete corrected C file as a "
+                "single JSON object of the form "
+                '{"artifacts": [{"name": "<name>.c", "content": "...", '
+                '"encoding": "text"}]} with no prose and no code fences.'
+            ),
+        },
+    ]
+    try:
+        content = providers.chat_completion(
+            base_url=compiler_cfg.get("base_url", "http://localhost:11434/v1"),
+            api_key=compiler_cfg.get("api_key", ""),
+            model=compiler_cfg.get("model", "qwen2.5-coder:7b"),
+            messages=messages,
+            temperature=0.0,
+        )
+        resp = providers.extract_json(content)
+    except Exception as exc:  # noqa: BLE001 - repair is best effort
+        print(f"  repair request failed: {exc}", file=sys.stderr)
+        return None
+
+    artifacts = resp.get("artifacts") or []
+    for a in artifacts:
+        if a.get("name", "").endswith(".c"):
+            return a.get("content")
+    return None
 
 
 def do_compile(
@@ -108,7 +164,11 @@ def write_artifacts(resp: dict[str, Any], out_dir: Path) -> list[Path]:
 
 
 def maybe_compile_executable(resp: dict[str, Any]) -> Path | None:
-    """If emit=c and target is native, compile the emitted C file to a binary."""
+    """If emit=c and target is native, compile the emitted C file to a binary.
+
+    When the C does not compile, the compiler model is asked to repair it and
+    the result is compiled again, up to `max_repair_attempts` times.
+    """
     config = resp["_config"]
     emit = config["emit"]
     target = config["target"]
@@ -128,7 +188,31 @@ def maybe_compile_executable(resp: dict[str, Any]) -> Path | None:
     exe_path = out_dir / exe_name
 
     link_flags = config.get("link_flags")
-    _compile_c_to_exe(c_path, exe_path, config["opt_level"], link_flags)
+    opt_level = config["opt_level"]
+
+    attempts = int(config.get("max_repair_attempts", 3))
+    for attempt in range(attempts + 1):
+        errors = _c_compile_errors(c_path, opt_level, link_flags)
+        if not errors:
+            break
+        if attempt == attempts:
+            print(
+                f"  C source still does not compile after {attempts} repair "
+                "attempts; last errors:",
+                file=sys.stderr,
+            )
+            print(errors, file=sys.stderr)
+            return None
+        print(f"  C does not compile (attempt {attempt + 1}); asking the model to repair")
+        fixed = _repair_c(c_path.read_text(encoding="utf-8"), errors, config["compiler"])
+        if not fixed:
+            print("  repair produced no C source", file=sys.stderr)
+            return None
+        c_path.write_text(fixed, encoding="utf-8")
+        c_art["content"] = fixed
+        print(f"  repaired {c_path}")
+
+    _compile_c_to_exe(c_path, exe_path, opt_level, link_flags)
     print(f"  compiled {c_path} -> {exe_path}")
     return exe_path
 
