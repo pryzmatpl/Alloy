@@ -1,8 +1,15 @@
-# Alloy v0.2
+<p align="center">
+  <img src="logo.jpg" alt="Alloy" width="420">
+</p>
 
-Alloy is a small systems language designed for LLMs. In v0.2 it becomes a
-real, runnable compiler where the compilation passes are performed by an LLM
-through a structured JSON protocol (ACP).
+<h1 align="center">Alloy v0.2</h1>
+
+<p align="center">
+  A small systems language designed for LLMs.
+</p>
+
+In v0.2 it becomes a real, runnable compiler where the compilation passes are
+performed by an LLM through a structured JSON protocol (ACP).
 
 | File | Role |
 |------|------|
