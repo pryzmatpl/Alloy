@@ -207,3 +207,5 @@ Tests include:
 - v0.2 adds Alloy IR (§17) and ACP (§18).
 - The compiler is real but LLM-powered; emitted C/assembly quality depends on
 the configured model.
+
+## [Buy me a coffe please I am amassing wealth to buy Instinct rack](https://buymeacoffee.com/piotroxp)
