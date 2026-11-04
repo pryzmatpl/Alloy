@@ -51,7 +51,7 @@ def load_config(package_dir: Path) -> dict[str, Any]:
         for key in ("provider", "model", "base_url", "api_key", "protocol"):
             if key in data:
                 config.setdefault("compiler", {})[key] = data[key]
-        for key in ("target", "emit", "opt_level"):
+        for key in ("target", "emit", "opt_level", "link_flags"):
             if key in data:
                 config[key] = data[key]
 

@@ -37,9 +37,13 @@ def _find_c_artifact(artifacts: list[dict[str, Any]]) -> dict[str, Any] | None:
     return None
 
 
-def _compile_c_to_exe(c_path: Path, exe_path: Path, opt_level: int) -> None:
+def _compile_c_to_exe(
+    c_path: Path, exe_path: Path, opt_level: int, link_flags: list[str] | None = None
+) -> None:
     cc = shutil.which("gcc") or shutil.which("clang") or "cc"
     cmd = [cc, f"-O{opt_level}", str(c_path), "-o", str(exe_path)]
+    if link_flags:
+        cmd.extend(link_flags if isinstance(link_flags, list) else [link_flags])
     subprocess.run(cmd, check=True)
 
 
@@ -123,7 +127,8 @@ def maybe_compile_executable(resp: dict[str, Any]) -> Path | None:
         exe_name += ".exe"
     exe_path = out_dir / exe_name
 
-    _compile_c_to_exe(c_path, exe_path, config["opt_level"])
+    link_flags = config.get("link_flags")
+    _compile_c_to_exe(c_path, exe_path, config["opt_level"], link_flags)
     print(f"  compiled {c_path} -> {exe_path}")
     return exe_path
 

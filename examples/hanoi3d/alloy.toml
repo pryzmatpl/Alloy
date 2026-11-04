@@ -1,0 +1,12 @@
+# Libraries needed to link the generated OpenGL/freeglut program.
+link_flags = ["-lGL", "-lGLU", "-lglut", "-lm"]
+
+[package]
+name = "hanoi3d"
+version = "0.2.0"
+kind = "bin"
+
+[compiler]
+provider = "ollama"
+model = "qwen2.5-coder:14b"
+base_url = "http://localhost:11434/v1"
