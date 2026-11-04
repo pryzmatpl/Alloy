@@ -62,6 +62,22 @@ Rules for the response:
 - `extern "C"` declarations have no body.
 - No borrow checker, no lifetimes, no `&T` types, no `impl`, no `trait`, no
   `unsafe`, no `$` variables, no `->method` calls.
+- A module-scope `var` is a mutable global and lowers to a C global.
+- A module-scope `let` is a constant and lowers to a `static const` or a
+  `#define`.
+
+## Do not substitute constants
+
+When the source passes a numeric value to a C API, that number is the exact
+value the API expects. Pass it through unchanged.
+
+- Never rename a constant to a different constant of the same API. If the
+  source passes `0x2601` to a fog-mode parameter, the C must pass `0x2601`
+  (or its own symbolic name for `0x2601`), never a different mode.
+- If the source names a constant symbolically, such as `GL_FOG_START`, keep
+  that name in the C and give it the value the source declares.
+- Do not "fix up" parameter values. A value that looks extreme to you is what
+  the source asked for.
 
 ## Lowering vectors and arrays to C
 

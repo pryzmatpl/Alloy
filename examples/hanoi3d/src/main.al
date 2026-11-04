@@ -3,8 +3,9 @@
 // The emitted C program must:
 //   - include <GL/freeglut.h>, <GL/glu.h>, <math.h> and <stdio.h>
 //   - link with -lGL -lGLU -lglut -lm
-//   - build a 64x64 procedural wood texture (rings + dark speckles) and map it
-//     onto every cylinder through a GLU quadric, so the wood shows grain
+//   - build a 64x64 procedural wood texture (vertical grain + dark knots) and
+//     map it onto every cylinder through a GLU quadric, so the wood shows
+//     grain and speckles instead of flat colour
 //   - tint each disk with a different wood tone (GL_MODULATE + glColor3f)
 //   - enable GL_FOG with a pale sky colour for depth mist
 //   - add drifting translucent mist puffs (low alpha spheres, blending on)
@@ -12,6 +13,10 @@
 //   - rotate the camera with the arrow keys and slowly orbit on its own
 //
 // The GLU quadric handle is an opaque GLUquadric*; Alloy spells it *mut u8.
+//
+// The GL_* constants below are named after the OpenGL constants of the same
+// name and value. In the emitted C, use the ones from <GL/gl.h> directly and
+// do not redefine them.
 
 extern "C" {
     function printf(fmt: *const u8, ...): i32;
@@ -67,6 +72,44 @@ extern "C" {
     function gluCylinder(q: *mut u8, rBase: f64, rTop: f64, height: f64, slices: i32, stacks: i32): void;
 }
 
+// OpenGL constants, named exactly as in <GL/gl.h>.
+let GL_DEPTH_TEST: u32 = 0x0B71;
+let GL_LIGHTING: u32 = 0x0B50;
+let GL_LIGHT0: u32 = 0x4000;
+let GL_COLOR_MATERIAL: u32 = 0x0B57;
+let GL_LIGHT_MODEL_AMBIENT: u32 = 0x0B57;
+let GL_AMBIENT_AND_DIFFUSE: u32 = 0x1601;
+let GL_FRONT: u32 = 0x0404;
+let GL_POSITION: u32 = 0x1202;
+let GL_FOG: u32 = 0x0B60;
+let GL_FOG_MODE: u32 = 0x0B65;
+let GL_FOG_START: u32 = 0x0B63;
+let GL_FOG_END: u32 = 0x0B64;
+let GL_FOG_COLOR: u32 = 0x0B66;
+let GL_LINEAR: i32 = 0x2601;
+let GL_BLEND: u32 = 0x0BE2;
+let GL_SRC_ALPHA: u32 = 0x0302;
+let GL_ONE_MINUS_SRC_ALPHA: u32 = 0x0303;
+let GL_TEXTURE_2D: u32 = 0x0DE1;
+let GL_TEXTURE_ENV: u32 = 0x2300;
+let GL_TEXTURE_ENV_MODE: u32 = 0x2200;
+let GL_TEXTURE_MIN_FILTER: u32 = 0x2801;
+let GL_TEXTURE_MAG_FILTER: u32 = 0x2800;
+let GL_TEXTURE_WRAP_S: u32 = 0x2802;
+let GL_TEXTURE_WRAP_T: u32 = 0x2803;
+let GL_REPEAT: i32 = 0x2901;
+let GL_MODULATE: i32 = 0x2100;
+let GL_RGB: u32 = 0x1907;
+let GL_UNSIGNED_BYTE: u32 = 0x1401;
+let GL_PROJECTION: u32 = 0x1701;
+let GL_MODELVIEW: u32 = 0x1700;
+let GLUT_ELAPSED_TIME: i32 = 0x02BC;
+let GLUT_KEY_LEFT: i32 = 100;
+let GLUT_KEY_RIGHT: i32 = 102;
+let GLUT_KEY_UP: i32 = 101;
+let GLUT_KEY_DOWN: i32 = 103;
+let GLU_SMOOTH: u32 = 0x0001;
+
 let DISKS: i32 = 4;
 let TEX_SIZE: i32 = 64;
 let MOVE_MS: i32 = 800;
@@ -101,6 +144,7 @@ function texRand(x: u32, y: u32): f32 {
     return (texHash(x, y) as f32) / 4294967296.0;
 }
 
+// Vertical wood grain with dark knots and speckles.
 function buildWoodTexture(): void {
     var px: i32 = 0;
     while px < TEX_SIZE {
@@ -109,15 +153,21 @@ function buildWoodTexture(): void {
             let fx: f32 = px as f32;
             let fy: f32 = py as f32;
             let n: f32 = texRand(px as u32, py as u32);
-            let rings: f32 = sinf(fy * 0.85 + 2.5 * sinf(fx * 0.11) + 1.5 * (n - 0.5));
-            let g: f32 = 0.55 + 0.45 * rings;
-            var rr: f32 = 0.30 + 0.55 * g;
-            var gg: f32 = 0.17 + 0.40 * g;
-            var bb: f32 = 0.07 + 0.22 * g;
-            if n > 0.97 {
-                rr = rr * 0.30;
-                gg = gg * 0.30;
-                bb = bb * 0.30;
+            let knot: f32 = texRand((px / 4) as u32, (py / 4) as u32);
+            let grain: f32 = sinf(fx * 0.85 + 2.5 * sinf(fy * 0.11) + 1.5 * (n - 0.5));
+            let g: f32 = 0.55 + 0.45 * grain;
+            var rr: f32 = 0.34 + 0.50 * g;
+            var gg: f32 = 0.19 + 0.36 * g;
+            var bb: f32 = 0.08 + 0.20 * g;
+            if knot > 0.94 {
+                rr = rr * 0.28;
+                gg = gg * 0.24;
+                bb = bb * 0.20;
+            }
+            if n > 0.985 {
+                rr = rr * 0.45;
+                gg = gg * 0.42;
+                bb = bb * 0.38;
             }
             let idx: i32 = (py * TEX_SIZE + px) * 3;
             woodTex[idx] = (rr * 255.0) as u8;
@@ -151,13 +201,15 @@ function diskRadius(d: i32): f32 {
     return 0.20 + 0.08 * d as f32;
 }
 
+// One wood tone per disk: maple, cherry, walnut, oak.
 function diskTint(d: i32): vec3 {
-    if d == 0 { return vec3(0.95, 0.82, 0.58); }
-    if d == 1 { return vec3(0.72, 0.33, 0.20); }
-    if d == 2 { return vec3(0.52, 0.33, 0.18); }
-    return vec3(0.86, 0.68, 0.42);
+    if d == 0 { return vec3(0.93, 0.79, 0.55); }
+    if d == 1 { return vec3(0.68, 0.28, 0.17); }
+    if d == 2 { return vec3(0.44, 0.26, 0.14); }
+    return vec3(0.82, 0.62, 0.36);
 }
 
+// How many disks bigger than d sit on this peg (the slot height of d).
 function countBigger(dp: *const i32, peg: i32, d: i32, skip: i32): i32 {
     var c: i32 = 0;
     var e: i32 = 0;
@@ -168,15 +220,6 @@ function countBigger(dp: *const i32, peg: i32, d: i32, skip: i32): i32 {
         e = e + 1;
     }
     return c;
-}
-
-function drawCylinder(radius: f32, height: f32, y: f32, tint: vec3): void {
-    glPushMatrix();
-    glTranslatef(0.0, y, 0.0);
-    glRotatef(-90.0, 1.0, 0.0, 0.0);
-    glColor3f(tint.x, tint.y, tint.z);
-    gluCylinder(quad, radius, radius, height, 32, 2);
-    glPopMatrix();
 }
 
 function drawScene(elapsed: i32): void {
@@ -203,17 +246,17 @@ function drawScene(elapsed: i32): void {
     let srcSlot: i32 = countBigger(dp.as_ptr(), srcPeg, flying, flying);
     let dstSlot: i32 = countBigger(dp.as_ptr(), dstPeg, flying, flying);
 
-    // Platform
+    // Round wooden platform
     glPushMatrix();
     glTranslatef(0.0, -0.07, 0.0);
     glRotatef(-90.0, 1.0, 0.0, 0.0);
-    glColor3f(0.40, 0.27, 0.18);
+    glColor3f(0.38, 0.24, 0.15);
     gluCylinder(quad, 1.70, 1.70, 0.14, 48, 2);
     glPopMatrix();
 
     // Pegs
-    let pegTone: vec3 = vec3(0.55, 0.38, 0.22);
-    let p: i32 = 0;
+    let pegTone: vec3 = vec3(0.50, 0.32, 0.17);
+    var p: i32 = 0;
     while p < 3 {
         glPushMatrix();
         glTranslatef(pegX(p), 0.0, 0.0);
@@ -224,7 +267,7 @@ function drawScene(elapsed: i32): void {
         p = p + 1;
     }
 
-    // Disks
+    // Disks, one of them in flight
     var d: i32 = 0;
     while d < DISKS {
         let tint: vec3 = diskTint(d);
@@ -255,19 +298,20 @@ function drawScene(elapsed: i32): void {
     }
 }
 
+// Soft translucent mist puffs drifting through the scene.
 function drawMist(elapsed: i32): void {
     let t: f32 = elapsed as f32 * 0.001;
     var i: i32 = 0;
-    while i < 14 {
+    while i < 16 {
         let fi: f32 = i as f32;
         let px: f32 = sinf(fi * 1.7 + t * 0.25) * 1.75;
         let pz: f32 = cosf(fi * 2.3 + t * 0.18) * 1.10;
-        let py: f32 = 0.12 + 0.48 * (0.5 + 0.5 * sinf(fi * 0.9 + t * 0.35));
-        let rad: f32 = 0.34 + 0.30 * (0.5 + 0.5 * sinf(fi * 3.1));
+        let py: f32 = 0.10 + 0.55 * (0.5 + 0.5 * sinf(fi * 0.9 + t * 0.35));
+        let rad: f32 = 0.40 + 0.34 * (0.5 + 0.5 * sinf(fi * 3.1));
         glPushMatrix();
         glTranslatef(px, py, pz);
-        glColor4f(0.78, 0.82, 0.88, 0.055);
-        glutSolidSphere(rad, 16, 12);
+        glColor4f(0.86, 0.90, 0.95, 0.10);
+        glutSolidSphere(rad, 20, 14);
         glPopMatrix();
         i = i + 1;
     }
@@ -277,7 +321,7 @@ function display(): void {
     glClear(0x00004000 | 0x00000100);
     glLoadIdentity();
 
-    let elapsed: i32 = glutGet(0x02BC);
+    let elapsed: i32 = glutGet(GLUT_ELAPSED_TIME);
     let t: f32 = elapsed as f32 * 0.001;
 
     let yaw: f32 = keyYaw + t * 6.0;
@@ -297,14 +341,14 @@ function display(): void {
 
     drawScene(elapsed);
 
-    glDisable(0x0B50);
-    glEnable(0x0BE2);
-    glBlendFunc(0x0302, 0x0303);
+    glDisable(GL_LIGHTING);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glDepthMask(0);
     drawMist(elapsed);
     glDepthMask(1);
-    glDisable(0x0BE2);
-    glEnable(0x0B50);
+    glDisable(GL_BLEND);
+    glEnable(GL_LIGHTING);
 
     glutSwapBuffers();
 }
@@ -314,61 +358,63 @@ function reshape(width: i32, height: i32): void {
         height = 1;
     }
     glViewport(0, 0, width, height);
-    glMatrixMode(0x1701);
+    glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
     gluPerspective(45.0, width as f64 / height as f64, 0.1, 100.0);
-    glMatrixMode(0x1700);
+    glMatrixMode(GL_MODELVIEW);
 }
 
 function special(key: i32, x: i32, y: i32): void {
-    if key == 100 { keyYaw = keyYaw - 4.0; }
-    if key == 102 { keyYaw = keyYaw + 4.0; }
-    if key == 101 { keyPitch = keyPitch + 3.0; }
-    if key == 103 { keyPitch = keyPitch - 3.0; }
+    if key == GLUT_KEY_LEFT { keyYaw = keyYaw - 4.0; }
+    if key == GLUT_KEY_RIGHT { keyYaw = keyYaw + 4.0; }
+    if key == GLUT_KEY_UP { keyPitch = keyPitch + 3.0; }
+    if key == GLUT_KEY_DOWN { keyPitch = keyPitch - 3.0; }
     if keyPitch > 45.0 { keyPitch = 45.0; }
     if keyPitch < -20.0 { keyPitch = -20.0; }
     glutPostRedisplay();
 }
 
+// GLUT timers are one-shot: re-arm every frame so the scene keeps animating.
 function tick(value: i32): void {
+    glutTimerFunc(16, tick, 0);
     glutPostRedisplay();
 }
 
 function init(): void {
     glClearColor(0.36, 0.41, 0.46, 1.0);
-    glEnable(0x0B71);
+    glEnable(GL_DEPTH_TEST);
 
-    glEnable(0x0B50);
-    glEnable(0x4000);
+    glEnable(GL_LIGHTING);
+    glEnable(GL_LIGHT0);
     let ambient: f32[4] = { 0.55, 0.55, 0.58, 1.0 };
-    glLightModelfv(0x0B57, ambient.as_ptr());
+    glLightModelfv(GL_LIGHT_MODEL_AMBIENT, ambient.as_ptr());
     let lightPos: f32[4] = { 2.5, 4.0, 3.0, 0.0 };
-    glLightfv(0x4000, 0x1202, lightPos.as_ptr());
+    glLightfv(GL_LIGHT0, GL_POSITION, lightPos.as_ptr());
 
-    glEnable(0x0B57);
-    glColorMaterial(0x0404, 0x1601);
+    glEnable(GL_COLOR_MATERIAL);
+    glColorMaterial(GL_FRONT, GL_AMBIENT_AND_DIFFUSE);
 
-    glEnable(0x0B60);
-    glFogi(0x0B65, 0x2601);
-    glFogf(0x0B63, 3.0);
-    glFogf(0x0B64, 13.0);
+    glEnable(GL_FOG);
+    glFogi(GL_FOG_MODE, GL_LINEAR);
+    glFogf(GL_FOG_START, 4.5);
+    glFogf(GL_FOG_END, 16.0);
     let fogColor: f32[4] = { 0.36, 0.41, 0.46, 1.0 };
-    glFogfv(0x0B66, fogColor.as_ptr());
+    glFogfv(GL_FOG_COLOR, fogColor.as_ptr());
 
     buildWoodTexture();
     var texId: u32 = 0;
     glGenTextures(1, &texId);
-    glBindTexture(0x0DE1, texId);
-    glTexParameteri(0x0DE1, 0x2801, 0x2601);
-    glTexParameteri(0x0DE1, 0x2800, 0x2601);
-    glTexParameteri(0x0DE1, 0x2802, 0x2901);
-    glTexParameteri(0x0DE1, 0x2803, 0x2901);
-    glTexImage2D(0x0DE1, 0, 0x1907, TEX_SIZE, TEX_SIZE, 0, 0x1907, 0x1401, woodTex.as_ptr());
-    glTexEnvi(0x2300, 0x2200, 0x2100);
-    glEnable(0x0DE1);
+    glBindTexture(GL_TEXTURE_2D, texId);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, TEX_SIZE, TEX_SIZE, 0, GL_RGB, GL_UNSIGNED_BYTE, woodTex.as_ptr());
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+    glEnable(GL_TEXTURE_2D);
 
     quad = gluNewQuadric();
-    gluQuadricNormals(quad, 0x0001);
+    gluQuadricNormals(quad, GLU_SMOOTH);
     gluQuadricTexture(quad, 1);
 
     mvCount = 0;
