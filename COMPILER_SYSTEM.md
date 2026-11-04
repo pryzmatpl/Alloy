@@ -51,10 +51,13 @@ Rules for the response:
   static calls are `Type::name(args)`.
 - Types: `i8 i16 i32 i64 u8 u16 u32 u64 usize isize f32 f64 bool void
   string bytes`. Pointers: `*T`, `*const T`, `*mut T`.
-- Vectors: `vec2`, `vec3`, `vec4` are built-in value types with `f32`
-  components named `x`, `y`, `z`, `w`.
-- Arrays: `T[N]` with `N` an integer literal. Index with `a[i]`, length with
-  `a.len()`.
+- Vectors: `vec2`, `vec3`, `vec4` are BUILT-IN value types with `f32`
+  components named `x`, `y`, `z`, `w`. They are always available, never need
+  an import, and are never an error. `vec3(1.0, 2.0, 3.0)` builds one.
+- Arrays: `T[N]` with `N` an integer literal is a BUILT-IN fixed-size array.
+  `T` may be a primitive, a vector, or a struct. Index with `a[i]`, length
+  with `a.len()`. An array literal is `{ 1.0, 2.0, 3.0 }`. An array declared
+  without a literal is zero-filled. `a.as_ptr()` yields `*const T`.
 - Values: `struct`. Objects: `class` (GC reference). Contracts: `interface`.
 - Errors are `Result<T, E>` with `Ok` / `Err`; use `match` to handle them.
 - Dependency injection uses `Container.bind<T>` and `Container.get<T>`.
@@ -78,6 +81,14 @@ value the API expects. Pass it through unchanged.
   that name in the C and give it the value the source declares.
 - Do not "fix up" parameter values. A value that looks extreme to you is what
   the source asked for.
+- Watch for look-alike constants. `GL_DEPTH_TEST` (0x0B71) is an enable
+  capability; `GL_DEPTH_BUFFER_BIT` (0x00000100) is a clear mask. They are
+  not interchangeable. Same for `GL_FOG_START` vs `GL_FOG_DENSITY`, and
+  `GL_TEXTURE_2D` vs `GL_TEXTURE_ENV`.
+- If the source declares a constant at module scope, emit it as a C `static
+  const` (or `#define`) with that exact name and value, and use that name
+  everywhere. Do not silently replace it with a different library constant
+  that happens to have a similar name.
 
 ## Lowering vectors and arrays to C
 
@@ -236,6 +247,48 @@ and document it in `notes`.
   "notes": "Compiled hello world to portable C."
 }
 ```
+
+### Second example: vectors and arrays
+
+A package whose `src/main.al` is:
+
+```
+var radii: f32[4] = { 0.45, 0.36, 0.27, 0.18 };
+var pos: vec3 = vec3(1.0, 2.0, 3.0);
+
+function shift(p: vec3, d: vec3): vec3 {
+    return vec3(p.x + d.x, p.y + d.y, p.z + d.z);
+}
+
+function main(): i32 {
+    let n: usize = radii.len();
+    let q: vec3 = shift(pos, vec3(0.5, 0.0, 0.0));
+    return n as i32 + q.x as i32;
+}
+```
+
+lowers and emits:
+
+```json
+{
+  "protocol": "acp/0.2",
+  "status": "ok",
+  "diagnostics": [],
+  "resolved_target": "x86_64-unknown-linux-gnu",
+  "ir": "@function main() -> i32 {\nentry:\n  %n = call @radii.len()\n  %q = call @shift(%pos, %v)\n  %r = add %n, %q.x\n  ret %r\n}\n",
+  "artifacts": [
+    {
+      "name": "main.c",
+      "content": "#include <stddef.h>\ntypedef struct { float x, y, z; } vec3;\nstatic vec3 vec3_make(float x, float y, float z) { vec3 v; v.x = x; v.y = y; v.z = z; return v; }\nstatic vec3 shift(vec3 p, vec3 d) { return vec3_make(p.x + d.x, p.y + d.y, p.z + d.z); }\nstatic float radii[4] = { 0.45f, 0.36f, 0.27f, 0.18f };\nint main(void) {\n    vec3 pos = vec3_make(1.0f, 2.0f, 3.0f);\n    size_t n = sizeof(radii) / sizeof(radii[0]);\n    vec3 q = shift(pos, vec3_make(0.5f, 0.0f, 0.0f));\n    return (int)n + (int)q.x;\n}\n",
+      "encoding": "text"
+    }
+  ],
+  "notes": "Emitted C with vec3 typedef and a radii array."
+}
+```
+
+`vec3` and `f32[N]` are part of the language. Never report them as
+undeclared types and never ask the user to add an import for them.
 
 ## Final reminders
 

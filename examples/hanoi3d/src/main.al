@@ -73,6 +73,8 @@ extern "C" {
 }
 
 // OpenGL constants, named exactly as in <GL/gl.h>.
+let GL_COLOR_BUFFER_BIT: u32 = 0x00004000;
+let GL_DEPTH_BUFFER_BIT: u32 = 0x00000100;
 let GL_DEPTH_TEST: u32 = 0x0B71;
 let GL_LIGHTING: u32 = 0x0B50;
 let GL_LIGHT0: u32 = 0x4000;
@@ -154,7 +156,10 @@ function texRand(x: u32, y: u32): f32 {
     return (texHash(x, y) as f32) / 4294967296.0;
 }
 
-// Wood: vertical grain, fine speckles, a few small dark knots.
+// Wood grain as a GREYSCALE texture: the per-object wood tint (set with
+// glColor3f) supplies the colour, the texture only supplies grain and
+// speckle detail. A coloured texture multiplied by a coloured tint would
+// double-darken everything.
 function buildWoodTexture(): void {
     var px: i32 = 0;
     while px < TEX_SIZE {
@@ -164,20 +169,16 @@ function buildWoodTexture(): void {
             let fy: f32 = py as f32;
             let n: f32 = texRand(px as u32, py as u32);
             let grain: f32 = sinf(fx * 0.55 + 3.0 * sinf(fy * 0.09) + 1.2 * (n - 0.5));
-            let g: f32 = 0.55 + 0.45 * grain;
-            var rr: f32 = 0.38 + 0.52 * g;
-            var gg: f32 = 0.21 + 0.37 * g;
-            var bb: f32 = 0.09 + 0.21 * g;
+            var lum: f32 = 0.72 + 0.28 * grain;
             // Fine speckle: individual dark flecks in the grain.
             if n > 0.965 {
-                rr = rr * 0.55;
-                gg = gg * 0.52;
-                bb = bb * 0.46;
+                lum = lum * 0.62;
             }
+            let v: u8 = (lum * 255.0) as u8;
             let idx: i32 = (py * TEX_SIZE + px) * 3;
-            woodTex[idx] = (rr * 255.0) as u8;
-            woodTex[idx + 1] = (gg * 255.0) as u8;
-            woodTex[idx + 2] = (bb * 255.0) as u8;
+            woodTex[idx] = v;
+            woodTex[idx + 1] = v;
+            woodTex[idx + 2] = v;
             py = py + 1;
         }
         px = px + 1;
@@ -286,10 +287,10 @@ function diskRadius(d: i32): f32 {
 
 // One wood tone per disk: maple, cherry, walnut, oak.
 function diskTint(d: i32): vec3 {
-    if d == 0 { return vec3(0.95, 0.83, 0.60); }
-    if d == 1 { return vec3(0.70, 0.26, 0.16); }
-    if d == 2 { return vec3(0.42, 0.24, 0.13); }
-    return vec3(0.85, 0.64, 0.36);
+    if d == 0 { return vec3(0.92, 0.78, 0.52); }
+    if d == 1 { return vec3(0.72, 0.30, 0.20); }
+    if d == 2 { return vec3(0.46, 0.28, 0.16); }
+    return vec3(0.84, 0.62, 0.34);
 }
 
 // How many disks bigger than d sit on this peg: the slot height of d.
@@ -340,10 +341,10 @@ function drawScene(elapsed: i32): void {
     let dstSlot: i32 = countBigger(dp.as_ptr(), dstPeg, flying, flying);
 
     // Round wooden platform
-    drawUpright(1.45, 0.14, 0.0, -0.07, 0.0, vec3(0.36, 0.23, 0.14));
+    drawUpright(1.45, 0.14, 0.0, -0.07, 0.0, vec3(0.40, 0.27, 0.17));
 
     // Pegs
-    let pegTone: vec3 = vec3(0.48, 0.31, 0.17);
+    let pegTone: vec3 = vec3(0.52, 0.35, 0.20);
     var p: i32 = 0;
     while p < 3 {
         drawUpright(0.055, PEG_HEIGHT, pegX(p), 0.0, 0.0, pegTone);
@@ -422,7 +423,7 @@ function drawMist(elapsed: i32): void {
 }
 
 function display(): void {
-    glClear(0x00004000 | 0x00000100);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glLoadIdentity();
 
     let elapsed: i32 = glutGet(GLUT_ELAPSED_TIME);
@@ -527,11 +528,11 @@ function init(): void {
     glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
     glEnable(GL_TEXTURE_2D);
 
-    // The mist uses its own alpha texture, bound to unit 1.
+    // The mist uses its own alpha texture, on texture unit 1.
     buildMistTexture();
     var mistId: u32 = 0;
     glGenTextures(1, &mistId);
-    glActiveTexture(1);
+    glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, mistId);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -543,6 +544,7 @@ function init(): void {
     mvCount = 0;
     planMoves(DISKS, 0, 0, 2, 1);
 }
+
 
 function main(): i32 {
     let argc: i32 = 1;
