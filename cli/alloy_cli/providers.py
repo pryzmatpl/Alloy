@@ -13,7 +13,7 @@ def chat_completion(
     model: str,
     messages: list[dict[str, str]],
     temperature: float = 0.0,
-    timeout: float = 300.0,
+    timeout: float = 600.0,
 ) -> str:
     """Call an OpenAI-compatible chat completion endpoint and return content."""
     url = base_url.rstrip("/") + "/chat/completions"

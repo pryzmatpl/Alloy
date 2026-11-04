@@ -1,0 +1,9 @@
+[package]
+name = "hanoi"
+version = "0.2.0"
+kind = "bin"
+
+[compiler]
+provider = "ollama"
+model = "qwen3:4b"
+base_url = "http://localhost:11434/v1"

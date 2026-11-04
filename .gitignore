@@ -12,3 +12,6 @@ __pycache__/
 
 # Ollama / local model runtime files (if any)
 *.log
+ollama-bin/
+ollama-bin.tar.zst
+ollama-full.tar.zst
