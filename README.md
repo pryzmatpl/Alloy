@@ -14,6 +14,7 @@ through a structured JSON protocol (ACP).
 | `cli/alloy` | Reference CLI. |
 | `mcp/mcp_server.py` | Optional MCP server. |
 | `examples/hello/` | Canonical package. |
+| `examples/hanoi/` | Recursive Towers of Hanoi demo. |
 
 ## Quick start
 
@@ -27,6 +28,39 @@ ollama run qwen2.5:0.5b
 
 # 3. Or just type-check it.
 ./cli/alloy check examples/hello
+```
+
+## Compiling the examples
+
+Both examples compile with the same command:
+
+```bash
+./cli/alloy run examples/hello
+./cli/alloy run examples/hanoi
+```
+
+`hello` works with small models such as `qwen2.5:0.5b`. `hanoi` uses recursion
+and string formatting, so a larger model is recommended; the example is
+tested with `qwen3:4b` (set in `examples/hanoi/alloy.toml`).
+
+Expected Hanoi output for 4 disks:
+
+```
+Move from A to B
+Move from A to C
+Move from B to C
+Move from A to B
+Move from C to A
+Move from C to B
+Move from A to B
+Move from A to C
+Move from B to C
+Move from B to A
+Move from C to A
+Move from B to C
+Move from A to B
+Move from A to C
+Move from B to C
 ```
 
 ## Installation
