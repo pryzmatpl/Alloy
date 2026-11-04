@@ -1,8 +1,8 @@
 // 3D misty Hanoi tower.
 //
 // The emitted C program must:
-//   - include <GL/freeglut.h>, <math.h> and <stdio.h>
-//   - link with -lGL -lglut -lm
+//   - include <GL/freeglut.h>, <GL/glu.h>, <math.h> and <stdio.h>
+//   - link with -lGL -lGLU -lglut -lm
 //   - build a 64x64 procedural wood texture (grain + dark knots + speckles)
 //   - draw every disk, peg and the platform as a HAND-BUILT textured
 //     cylinder: a GL_QUADS side wall plus a GL_TRIANGLE_FAN cap, each with
@@ -67,6 +67,7 @@ extern "C" {
     function glNormal3f(x: f32, y: f32, z: f32): void;
     function glPointSize(size: f32): void;
     function glPerspective(fovy: f64, aspect: f64, zNear: f64, zFar: f64): void;
+    function gluLookAt(eyeX: f64, eyeY: f64, eyeZ: f64, centerX: f64, centerY: f64, centerZ: f64, upX: f64, upY: f64, upZ: f64): void;
 }
 
 // OpenGL constants, named exactly as in <GL/gl.h>.
@@ -382,11 +383,12 @@ function display(): void {
     camPos.y = camTarget.y + dist * sp;
     camPos.z = camTarget.z + dist * cp * cy;
 
-    // Build the view matrix by hand: translate to the target, then rotate.
-    glTranslatef(-camTarget.x, -camTarget.y, -camTarget.z);
-    glRotatef(pitch, 1.0, 0.0, 0.0);
-    glRotatef(-yaw, 0.0, 1.0, 0.0);
-    glTranslatef(0.0, 0.0, -dist);
+    // Aim the camera at the target from the orbiting position.
+    gluLookAt(
+        camPos.x as f64, camPos.y as f64, camPos.z as f64,
+        camTarget.x as f64, camTarget.y as f64, camTarget.z as f64,
+        0.0, 1.0, 0.0
+    );
 
     drawScene(elapsed);
 
@@ -448,8 +450,8 @@ function init(): void {
 
     glEnable(GL_FOG);
     glFogi(GL_FOG_MODE, GL_LINEAR);
-    glFogf(GL_FOG_START, 3.5);
-    glFogf(GL_FOG_END, 14.0);
+    glFogf(GL_FOG_START, 9.0);
+    glFogf(GL_FOG_END, 26.0);
     let fogColor: f32[4] = { 0.42, 0.47, 0.52, 1.0 };
     glFogfv(GL_FOG_COLOR, fogColor.as_ptr());
 
