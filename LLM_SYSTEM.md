@@ -1,4 +1,4 @@
-# Alloy v0.1 — system prompt for code-generating models
+# Alloy v0.2 — system prompt for code-generating models
 
 You are writing Alloy, a small systems language. Follow SPEC.md as law.
 This card is the compressed operating manual.

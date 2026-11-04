@@ -1,6 +1,0 @@
-@function main() -> i32 {
-entry:
-  %r = call @write_str("Hello, world!\n")
-  %code = match %r { Ok(%_) => 0, Err(%_) => 1 }
-  ret %code
-}

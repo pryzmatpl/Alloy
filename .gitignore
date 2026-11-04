@@ -1,0 +1,14 @@
+# Alloy build outputs
+target/
+build/
+*.o
+*.obj
+*.wasm
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Ollama / local model runtime files (if any)
+*.log
