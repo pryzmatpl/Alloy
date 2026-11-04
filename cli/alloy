@@ -1,0 +1,14 @@
+#!/usr/bin/env python3
+"""Thin wrapper that runs the alloy_cli package from the source tree."""
+
+import os
+import sys
+
+# Ensure the sibling alloy_cli package is importable regardless of CWD.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _HERE)
+
+from alloy_cli import main
+
+if __name__ == "__main__":
+    sys.exit(main())

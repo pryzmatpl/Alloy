@@ -1,0 +1,119 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://pryzmat.pl/alloy/acp/0.2/schema.json",
+  "title": "Alloy Compilation Protocol (ACP) 0.2",
+  "description": "JSON request/response schema for the Alloy v0.2 LLM-as-compiler pipeline.",
+  "definitions": {
+    "diagnostic": {
+      "type": "object",
+      "required": ["level", "message"],
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": ["error", "warning", "info"]
+        },
+        "message": { "type": "string" },
+        "file": { "type": "string" },
+        "line": { "type": "integer", "minimum": 1 },
+        "column": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "required": ["name", "content"],
+      "properties": {
+        "name": { "type": "string" },
+        "content": { "type": "string" },
+        "encoding": {
+          "type": "string",
+          "enum": ["text", "base64"],
+          "default": "text"
+        }
+      }
+    },
+    "request": {
+      "type": "object",
+      "required": ["protocol", "package", "target", "passes"],
+      "properties": {
+        "protocol": {
+          "type": "string",
+          "const": "acp/0.2"
+        },
+        "package": {
+          "type": "object",
+          "required": ["name", "kind", "files"],
+          "properties": {
+            "name": { "type": "string" },
+            "kind": {
+              "type": "string",
+              "enum": ["bin", "lib"]
+            },
+            "files": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            }
+          }
+        },
+        "target": { "type": "string" },
+        "passes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["typecheck", "lower", "emit"]
+          },
+          "minItems": 1
+        },
+        "options": {
+          "type": "object",
+          "properties": {
+            "opt_level": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3,
+              "default": 0
+            },
+            "emit": {
+              "type": "string",
+              "enum": ["ir", "assembly", "c", "wasm", "object"],
+              "default": "c"
+            }
+          }
+        }
+      }
+    },
+    "response": {
+      "type": "object",
+      "required": ["protocol", "status"],
+      "properties": {
+        "protocol": {
+          "type": "string",
+          "const": "acp/0.2"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["ok", "error"]
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/diagnostic" }
+        },
+        "resolved_target": { "type": "string" },
+        "ir": { "type": "string" },
+        "artifacts": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/artifact" }
+        },
+        "notes": { "type": "string" }
+      }
+    }
+  },
+  "type": "object",
+  "oneOf": [
+    {
+      "allOf": [{ "$ref": "#/definitions/request" }]
+    },
+    {
+      "allOf": [{ "$ref": "#/definitions/response" }]
+    }
+  ]
+}

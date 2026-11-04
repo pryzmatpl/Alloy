@@ -1,6 +1,6 @@
 # Alloy Language Specification
-Version 0.1 — 2026-09-15
-Status: design freeze for LLM consumption (not a production compiler)
+Version 0.2 — 2026-11-04
+Status: design freeze for LLM consumption and ACP/0.2 compilers (not a production compiler)
 
 This document is the source of truth for Alloy. An implementation or an LLM
 must follow it. If example code and a rule conflict, the rule wins.
@@ -503,16 +503,16 @@ A `lib` package exports its public items; no `main`.
 
 ## 12. Build interface (for LLMs that “compile”)
 
-Commands an Alloy tool or a simulated tool must understand:
+Commands an Alloy v0.2 tool must understand:
 
 ```
-alloy build
-alloy build --target <triple>
-alloy check                  # parse + type check only
-alloy run                    # build host target and execute
+alloy init                   # create a minimal package
+alloy check [path]           # parse + type check via ACP
+alloy build [--target <triple>] [--emit <format>] [--opt N] [path]
+alloy run [path]             # build host target and execute
 ```
 
-Triples (v0.1):
+Triples (v0.2):
 
 ```
 x86_64-unknown-linux-gnu
@@ -522,9 +522,19 @@ x86_64-pc-windows-msvc
 wasm32-wasi
 ```
 
-Emit:
-- native: an executable named after `[package].name`
-- wasi: `name.wasm`
+Emit formats (v0.2):
+
+```
+ir         # textual Alloy IR (§17)
+assembly   # target assembly text
+c          # portable C source
+wasm       # WebAssembly binary/text
+object     # native object file
+```
+
+The CLI communicates with a compiler LLM through the Alloy Compilation
+Protocol (ACP, §18). The LLM receives the package as JSON and returns
+diagnostics, optional IR, and artifacts.
 
 When an LLM cannot actually invoke a backend, it must still:
 1. Emit a complete package tree.
@@ -647,7 +657,7 @@ function main(): i32 {
 
 ## 16. Acceptance checklist
 
-A source tree is valid Alloy v0.1 if:
+A source tree is valid Alloy v0.2 if:
 
 - [ ] Every function uses `function` and has a return type (except `drop`)
 - [ ] Every interface method starts with `self`
@@ -658,3 +668,105 @@ A source tree is valid Alloy v0.1 if:
 - [ ] `#if target` blocks parse on all branches
 - [ ] DI use only goes through `Container.bind` / `get`
 - [ ] Strings used as pointers remain reachable across the call
+- [ ] The package builds an ACP/0.2 request that includes all source files
+- [ ] The compiler LLM can emit valid Alloy IR (§17) for the package
+- [ ] The chosen `--emit` format is one of `ir`, `assembly`, `c`, `wasm`, `object`
+
+---
+
+## 17. Alloy IR
+
+Alloy v0.2 defines a textual, SSA-style intermediate representation that
+compiler LLMs emit during the `lower` pass and that downstream backends can
+consume. The IR is intentionally small: it has types, constants, basic blocks,
+and a short instruction set.
+
+### 17.1 Syntax
+
+```
+module ::= { global | function }
+
+global ::= "@" ident "=" type const "\n"
+
+function ::= "@function" ident "(" [ param { "," param } ] ")" "->" type "{"
+               { block }
+             "}"
+
+param  ::= "%" ident ":" type
+block  ::= ident ":" { instr }
+instr  ::= "%" ident "=" "alloca" type
+         | "%" ident "=" "load" value
+         | "store" value "," value
+         | "%" ident "=" "call" "@" ident [ "<" type { "," type } ">" ] "(" [ value { "," value } ] ")"
+         | "%" ident "=" "getelementptr" value "," type "," value
+         | "%" ident "=" "binaryop" value "," value     ; add, sub, mul, ...
+         | "%" ident "=" "icmp" cond value "," value
+         | "br" label
+         | "br" value "," label "," label
+         | "%" ident "=" "phi" type "[" value "," label "]" { "," "[" value "," label "]" }
+         | "%" ident "=" "match" value "{" arm { arm } "}"
+         | "ret" value
+
+value  ::= const | "%" ident | "@" ident
+arm    ::= variant "(" "%" ident ")" "=>" const | label
+```
+
+### 17.2 Types
+
+IR types mirror Alloy source types:
+
+```
+type ::= "i8" | "i16" | "i32" | "i64" | "u8" | "u16" | "u32" | "u64"
+       | "usize" | "isize" | "f32" | "f64" | "bool" | "void"
+       | "string" | "*" type | "*const" type | "*mut" type
+       | "{" { ident ":" type ";" } "}"
+       | "function" "(" [ type { "," type } ] ")" "->" type
+```
+
+### 17.3 Example
+
+The canonical hello program lowers to roughly:
+
+```
+@function main() -> i32 {
+entry:
+  %di = call @Container.new()
+  call @register_io(%di)
+  %out = call @Container.get<Writer>(%di)
+  %r = call @write_str(%out, "Hello, world!\n")
+  %code = match %r {
+    Ok(%_) => 0
+    Err(%_) => 1
+  }
+  ret %code
+}
+```
+
+Notes:
+- `%`-prefixed names are virtual registers.
+- `@`-prefixed names are globals, externs, or intrinsics.
+- `match` is a terminator-like expression that selects a value.
+- Memory is explicit through `alloca`, `load`, and `store`.
+
+---
+
+## 18. ACP Integration
+
+The Alloy Compilation Protocol (ACP) is the JSON wire format between the Alloy
+CLI and a compiler LLM. See `ACP_SCHEMA.json` and `docs/ACP.md` for the
+complete definition.
+
+At a high level:
+
+1. The CLI reads `alloy.toml` and every `.al` file under `src/`.
+2. It builds an ACP request containing the full package text, the requested
+target triple, the emit format, and the list of passes to run.
+3. It POSTs that request (wrapped in a chat-completion prompt) to the
+configured OpenAI-compatible endpoint.
+4. The LLM returns a JSON response. The CLI extracts `diagnostics`, `ir`, and
+`artifacts` and writes the artifacts to the build directory.
+5. For `alloy run`, the CLI may further compile `emit=c` artifacts with a host
+C compiler to produce and execute a native binary.
+
+ACP is intentionally provider-agnostic: any model exposing a
+`/v1/chat/completions` endpoint can be an Alloy compiler.
