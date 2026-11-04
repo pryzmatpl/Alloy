@@ -61,9 +61,17 @@ let l: f32 = p.x + p.y + p.z;
 let radii: f32[4] = { 0.45, 0.36, 0.27, 0.18 };
 let r: f32 = radii[0];
 let n: usize = radii.len();
+let p: *const f32 = radii.as_ptr();
 ```
 - Length is an integer literal. Indices are bounds-checked at runtime.
 - Arrays are values: assignment copies them. Use `*mut T` to mutate in place.
+
+## Numeric casts
+```
+let f: f32 = 3 as f32;
+let i: i32 = 2.9 as i32;
+```
+- `as` converts between numeric primitives. It does not convert vectors.
 
 ## Interfaces
 ```

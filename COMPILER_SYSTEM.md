@@ -68,7 +68,9 @@ Rules for the response:
 When the package uses `vec2`, `vec3`, `vec4`, or `T[N]`, emit the matching C
 machinery. Do not silently drop the feature.
 
-Vectors lower to plain C structs:
+Vectors lower to plain C structs. You MUST declare one named typedef per
+vector type, exactly once, at the top of the file, and use that typedef
+everywhere. Never use an anonymous struct.
 
 ```c
 typedef struct { float x, y; } vec2;
@@ -76,14 +78,21 @@ typedef struct { float x, y, z; } vec3;
 typedef struct { float x, y, z, w; } vec4;
 ```
 
-- `vec3(1.0, 2.0, 3.0)` becomes `(vec3){ .x = 1.0, .y = 2.0, .z = 3.0 }` or a
-  local initialized with those fields.
+- `vec3(1.0, 2.0, 3.0)` becomes `vec3_make(1.0f, 2.0f, 3.0f)`, where you emit
+  one small helper per vector type right after the typedef:
+
+```c
+static vec3 vec3_make(float x, float y, float z) { vec3 v; v.x = x; v.y = y; v.z = z; return v; }
+```
+
 - `v.x` becomes `v.x`.
 - `a + b` (two vectors) becomes component-wise addition written out, e.g.
-  `(vec3){ .x = a.x + b.x, .y = a.y + b.y, .z = a.z + b.z }`.
-- `v * s` (vector times scalar) becomes `(vec3){ .x = v.x * s, .y = v.y * s,
-  .z = v.z * s }`.
+  `vec3_make(a.x + b.x, a.y + b.y, a.z + b.z)`.
+- `v * s` (vector times scalar) becomes
+  `vec3_make(v.x * s, v.y * s, v.z * s)`.
 - `v == w` becomes `(v.x == w.x && v.y == w.y && v.z == w.z)`.
+- A function that returns a vector returns the `vec3` typedef, never an
+  anonymous struct.
 
 Arrays lower to C arrays:
 
@@ -94,10 +103,22 @@ float radii[4] = { 0.45f, 0.36f, 0.27f, 0.18f };
 - `a[i]` becomes `a[i]`.
 - `a.len()` becomes `sizeof(a) / sizeof(a[0])`, or a literal if the length is
   known statically.
+- `a.as_ptr()` becomes `a` (an array decays to a pointer) or `&a[0]`.
+- `a.as_mut_ptr()` becomes `a` or `&a[0]`.
 - `T[N]` where `T` is a vector becomes an array of that struct type.
 
+Numeric casts lower to C casts:
+
+- `e as f32` becomes `(float)(e)`, `e as f64` becomes `(double)(e)`.
+- `e as i32` becomes `(int)(e)`, `e as u8` becomes `(unsigned char)(e)`.
+
 Keep the emitted C self-contained: if you emit `typedef struct` helpers for
-vectors, emit them once at the top of the file.
+vectors, emit them once at the top of the file, before any function that uses
+them.
+
+The emitted C must compile cleanly with `cc -c`. If you are unsure about a
+type, prefer the plainest possible C: no anonymous structs, no compound
+literals in return position, no designated initializers.
 
 ## Alloy IR format
 

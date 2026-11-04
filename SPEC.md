@@ -120,6 +120,19 @@ f32 f64 bool void string bytes Result Ok Err null true false`.
 
 `string` is not a pointer. Convert with `s.as_ptr(): *const u8` and `s.len(): usize`.
 
+### 4.1.1 Numeric casts
+
+```
+e as f32 | e as f64 | e as i32 | e as u8 | e as u32 | e as i64 | e as u64
+```
+
+- A cast between two numeric primitives converts the value.
+- `f32` → `i32` truncates toward zero. `i32` → `f32` rounds to nearest.
+- Float → unsigned integer casts are undefined when the value is negative or
+  out of range; the program is wrong in that case.
+- Integer → integer casts wrap on overflow.
+- There is no cast between a vector and a scalar.
+
 ### 4.2 Pointers
 
 ```
@@ -252,7 +265,11 @@ array-type ::= type "[" int-literal "]"
 - Arrays are values: assignment copies the whole array. Pass `*mut T` to
   mutate an array in place.
 - Array literals: `let a: f32[3] = { 1.0, 2.0, 3.0 };`
+- An array declared without a literal initializer is zero-filled.
 - An array of vectors is `vec3[4]`; an array of structs is `struct-name[N]`.
+- `a[i] = v` assigns element `i` of a mutable (`var`) array binding.
+- `a.as_ptr(): *const T` yields a pointer to the first element.
+- `a.as_mut_ptr(): *mut T` yields a writable pointer to the first element.
 
 ---
 
@@ -280,8 +297,11 @@ var y: i32 = 1;     # mutable binding
 let z = 1;          # type inferred from initializer; required to have one
 ```
 
-`let` cannot be assigned after init. `var` can. No `const` keyword in v0.1
-(`let` at module scope is a constant if the initializer is a constant expr).
+- `let` cannot be assigned after init. `var` can. No `const` keyword in v0.1
+  (`let` at module scope is a constant if the initializer is a constant expr).
+- A module-scope `var` is a mutable global. It is initialized before `main`
+  runs and keeps its value for the whole program.
+
 
 ### 5.3 Visibility
 
