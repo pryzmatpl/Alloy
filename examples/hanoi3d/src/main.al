@@ -22,6 +22,7 @@ extern "C" {
     function printf(fmt: *const u8, ...): i32;
     function sinf(x: f32): f32;
     function cosf(x: f32): f32;
+    function sqrtf(x: f32): f32;
 
     function glutInit(argc: i32, argv: *const u8): void;
     function glutInitDisplayMode(mode: u32): void;
@@ -65,11 +66,17 @@ extern "C" {
     function glTexImage2D(target: u32, level: i32, internal: i32, w: i32, h: i32, border: i32, fmt: u32, type: u32, pixels: *const u8): void;
     function glTexParameteri(target: u32, pname: u32, param: i32): void;
     function glTexEnvi(target: u32, pname: u32, param: i32): void;
+    function glBegin(mode: u32): void;
+    function glEnd(): void;
+    function glVertex3f(x: f32, y: f32, z: f32): void;
+    function glTexCoord2f(s: f32, t: f32): void;
+    function glPointSize(size: f32): void;
 
     function gluNewQuadric(): *mut u8;
     function gluQuadricNormals(q: *mut u8, mode: u32): void;
     function gluQuadricTexture(q: *mut u8, on: u32): void;
     function gluCylinder(q: *mut u8, rBase: f64, rTop: f64, height: f64, slices: i32, stacks: i32): void;
+    function gluLookAt(eyeX: f64, eyeY: f64, eyeZ: f64, centerX: f64, centerY: f64, centerZ: f64, upX: f64, upY: f64, upZ: f64): void;
 }
 
 // OpenGL constants, named exactly as in <GL/gl.h>.
@@ -109,6 +116,7 @@ let GLUT_KEY_RIGHT: i32 = 102;
 let GLUT_KEY_UP: i32 = 101;
 let GLUT_KEY_DOWN: i32 = 103;
 let GLU_SMOOTH: u32 = 0x0001;
+let GL_POINT_SMOOTH: u32 = 0x0B11;
 
 let DISKS: i32 = 4;
 let TEX_SIZE: i32 = 64;
@@ -298,21 +306,25 @@ function drawScene(elapsed: i32): void {
     }
 }
 
-// Soft translucent mist puffs drifting through the scene.
+// Soft drifting mist: translucent round points, always facing the camera.
 function drawMist(elapsed: i32): void {
     let t: f32 = elapsed as f32 * 0.001;
     var i: i32 = 0;
-    while i < 16 {
+    while i < 120 {
         let fi: f32 = i as f32;
-        let px: f32 = sinf(fi * 1.7 + t * 0.25) * 1.75;
-        let pz: f32 = cosf(fi * 2.3 + t * 0.18) * 1.10;
-        let py: f32 = 0.10 + 0.55 * (0.5 + 0.5 * sinf(fi * 0.9 + t * 0.35));
-        let rad: f32 = 0.40 + 0.34 * (0.5 + 0.5 * sinf(fi * 3.1));
-        glPushMatrix();
-        glTranslatef(px, py, pz);
-        glColor4f(0.86, 0.90, 0.95, 0.10);
-        glutSolidSphere(rad, 20, 14);
-        glPopMatrix();
+        let seed: f32 = texRand(i as u32, 7);
+        let seed2: f32 = texRand(i as u32, 991);
+        let px: f32 = sinf(fi * 1.7 + t * 0.22) * 2.1 + (seed - 0.5) * 0.9;
+        let pz: f32 = cosf(fi * 2.3 + t * 0.15) * 1.4 + (seed2 - 0.5) * 0.9;
+        let py: f32 = 0.05 + 0.95 * (0.5 + 0.5 * sinf(fi * 0.9 + t * 0.30));
+        let size: f32 = 40.0 + 90.0 * seed;
+        let alpha: f32 = 0.020 + 0.030 * seed2;
+
+        glPointSize(size);
+        glColor4f(0.88, 0.92, 0.96, alpha);
+        glBegin(0x0000);
+        glVertex3f(px, py, pz);
+        glEnd();
         i = i + 1;
     }
 }
@@ -324,30 +336,38 @@ function display(): void {
     let elapsed: i32 = glutGet(GLUT_ELAPSED_TIME);
     let t: f32 = elapsed as f32 * 0.001;
 
+    // Orbit the camera around the target.
     let yaw: f32 = keyYaw + t * 6.0;
     let pitch: f32 = keyPitch;
-    let dist: f32 = 4.20;
-    let ry: f32 = cosf(yaw * 0.01745329);
-    let sx: f32 = sinf(yaw * 0.01745329);
-    let rp: f32 = cosf(pitch * 0.01745329);
-    let sp: f32 = sinf(pitch * 0.01745329);
-    camPos.x = camTarget.x + dist * ry * rp;
+    let dist: f32 = 4.60;
+    let yr: f32 = yaw * 0.01745329;
+    let pr: f32 = pitch * 0.01745329;
+    let cp: f32 = cosf(pr);
+    let sp: f32 = sinf(pr);
+    let cy: f32 = cosf(yr);
+    let sy: f32 = sinf(yr);
+    camPos.x = camTarget.x + dist * cp * sy;
     camPos.y = camTarget.y + dist * sp;
-    camPos.z = camTarget.z + dist * sx * rp;
+    camPos.z = camTarget.z + dist * cp * cy;
 
-    glTranslatef(-camPos.x, -camPos.y, -camPos.z);
-    glRotatef(-pitch, 1.0, 0.0, 0.0);
-    glRotatef(-yaw, 0.0, 1.0, 0.0);
+    gluLookAt(
+        camPos.x as f64, camPos.y as f64, camPos.z as f64,
+        camTarget.x as f64, camTarget.y as f64, camTarget.z as f64,
+        0.0, 1.0, 0.0
+    );
 
     drawScene(elapsed);
 
     glDisable(GL_LIGHTING);
+    glDisable(GL_TEXTURE_2D);
+    glEnable(GL_POINT_SMOOTH);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glDepthMask(0);
     drawMist(elapsed);
     glDepthMask(1);
     glDisable(GL_BLEND);
+    glEnable(GL_TEXTURE_2D);
     glEnable(GL_LIGHTING);
 
     glutSwapBuffers();
