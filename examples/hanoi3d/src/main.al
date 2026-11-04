@@ -68,7 +68,7 @@ extern "C" {
     function glTexCoord2f(s: f32, t: f32): void;
     function glNormal3f(x: f32, y: f32, z: f32): void;
     function glPointSize(size: f32): void;
-    function glPerspective(fovy: f64, aspect: f64, zNear: f64, zFar: f64): void;
+    function gluPerspective(fovy: f64, aspect: f64, zNear: f64, zFar: f64): void;
     function gluLookAt(eyeX: f64, eyeY: f64, eyeZ: f64, centerX: f64, centerY: f64, centerZ: f64, upX: f64, upY: f64, upZ: f64): void;
 }
 
@@ -475,7 +475,7 @@ function reshape(width: i32, height: i32): void {
     glViewport(0, 0, width, height);
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-    glPerspective(45.0, width as f64 / height as f64, 0.1, 100.0);
+    gluPerspective(45.0, width as f64 / height as f64, 0.1, 100.0);
     glMatrixMode(GL_MODELVIEW);
 }
 

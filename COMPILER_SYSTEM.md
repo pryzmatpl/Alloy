@@ -143,6 +143,18 @@ Keep the emitted C self-contained: if you emit `typedef struct` helpers for
 vectors, emit them once at the top of the file, before any function that uses
 them.
 
+A global vector must be initialised with a constant expression. Use a
+compound literal, not the helper function:
+
+```c
+typedef struct { float x, y, z; } vec3;
+static vec3 camTarget = { 0.0f, 0.42f, 0.0f };
+```
+
+`vec3 camTarget = vec3_make(0.0f, 0.42f, 0.0f);` is NOT valid C at file
+scope, because `vec3_make` is not a constant expression. Use the helper only
+inside functions.
+
 The emitted C must compile cleanly with `cc -c`. If you are unsure about a
 type, prefer the plainest possible C: no anonymous structs, no compound
 literals in return position, no designated initializers.
